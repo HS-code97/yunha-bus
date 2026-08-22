@@ -23,3 +23,12 @@ export const NODE_ID_MAP: Record<string, string> = {
   // '3280715': 'GYB3280715',
   // '3280744': 'GYB3280744',
 };
+
+/**
+ * 노선ID(routeId) → 출발지→도착지 경유 정류장 수 매핑.
+ * 실제 API 응답에서 routeId를 확인한 후 여기에 등록하면
+ * "집까지 N정거장" 뱃지가 표시됩니다. (미등록 노선은 뱃지 없이 표시)
+ */
+export const ROUTE_STOPS_MAP: Record<string, number> = {
+  // 'GYS30300001': 4,
+};

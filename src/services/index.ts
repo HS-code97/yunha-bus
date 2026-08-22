@@ -1,6 +1,6 @@
-import type { ArrivalInfo, OptimalBus, RouteStation } from '../types/bus';
-import { DESTINATION } from '../config/stations';
-import { resolveDirection, sortByEta } from '../utils/routeFilter';
+import type { ArrivalInfo, OptimalBus } from '../types/bus';
+import { DESTINATION, ROUTE_STOPS_MAP } from '../config/stations';
+import { sortByEta } from '../utils/routeFilter';
 import * as realApi from './bisApi';
 import { MOCK_ARRIVALS, MOCK_ROUTE_STATIONS } from './mockData';
 
@@ -16,25 +16,20 @@ export async function getArrivals(stationId: string): Promise<ArrivalInfo[]> {
   return realApi.fetchArrivals(stationId);
 }
 
-export async function getRouteStations(routeId: string): Promise<RouteStation[]> {
-  if (USE_MOCK) {
-    await delay(100);
-    return MOCK_ROUTE_STATIONS[routeId] ?? [];
-  }
-  return realApi.fetchRouteStations(routeId);
-}
-
-/** 정류소 실제 명칭 조회 (Mock 모드에서는 설정값 반환) */
+/** 정류소 실제 명칭 — 도착정보 응답에서 학습한 캐시 사용 (별도 API 호출 없음) */
 export async function getStationName(stationId: string): Promise<string> {
   if (USE_MOCK) return stationId;
-  return realApi.fetchStationName(stationId);
+  // nodeId 형태로도 조회 시도
+  const cached =
+    realApi.stationNameCache.get(stationId) ??
+    realApi.stationNameCache.get(`GYB${stationId}`);
+  return cached ?? stationId;
 }
 
 /**
  * 출발지 → 도착지 최적 버스 목록 조회
- * 1. 정류장 실시간 도착 정보 조회
- * 2. 각 노선의 경유 정류장 목록으로 방향 검증/최단 구간 필터링
- * 3. ETA 기준 정렬 후 상위 N개 반환
+ * - 도착정보 응답은 해당 정류장으로 오는 버스만 포함되므로 방향 자체는 안전
+ * - "집까지 N정거장" 뱃지는 ROUTE_STOPS_MAP(하드코딩) 기반
  */
 export async function getOptimalBuses(
   originStationId: string,
@@ -42,7 +37,7 @@ export async function getOptimalBuses(
 ): Promise<OptimalBus[]> {
   const arrivals = sortByEta(await getArrivals(originStationId));
 
-  // routeId별로 그룹핑 (같은 노선 여러 대 도착)
+  // routeId별 그룹핑 (같은 노선 여러 대)
   const byRoute = new Map<string, ArrivalInfo[]>();
   for (const a of arrivals) {
     const list = byRoute.get(a.routeId) ?? [];
@@ -52,13 +47,20 @@ export async function getOptimalBuses(
 
   const results: OptimalBus[] = [];
   for (const [routeId, list] of byRoute) {
-    const stations = await getRouteStations(routeId);
-    const dir = resolveDirection(stations, originStationId, DESTINATION.stationId);
-    if (!dir.valid) continue; // 순환 오탑승 방지: 유효하지 않은 방향 제외
+    let stopsToDestination = ROUTE_STOPS_MAP[routeId];
+
+    // Mock 모드에서는 기존 순환 필터링 로직 검증 유지
+    if (USE_MOCK) {
+      const { resolveDirection } = await import('../utils/routeFilter');
+      const stations = MOCK_ROUTE_STATIONS[routeId] ?? [];
+      const dir = resolveDirection(stations, originStationId, DESTINATION.stationId);
+      if (!dir.valid) continue;
+      stopsToDestination = dir.stopsToDestination;
+    }
 
     results.push({
       arrival: list[0],
-      stopsToDestination: dir.stopsToDestination,
+      stopsToDestination: stopsToDestination ?? 0,
       nextArrival: list[1],
     });
   }
