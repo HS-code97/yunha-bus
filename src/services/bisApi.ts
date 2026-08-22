@@ -1,4 +1,5 @@
 import type { ArrivalInfo, RouteStation } from '../types/bus';
+import { NODE_ID_MAP } from '../config/stations';
 
 /**
  * 국토교통부(TAGO) 광역 버스 API 연동 모듈
@@ -49,31 +50,70 @@ function parseItems<T>(data: unknown): T[] {
 // ---------- nodeId 변환 ----------
 /**
  * 7자리 정류소 번호(arsId)를 TAGO nodeId로 변환.
- * TAGO nodeId 형식은 지역별 접두사 + arsId (예: 광양시 "GYB3280671").
- * 접두사 후보들을 순차 시도하여 실제 존재하는 nodeId를 찾아 캐싱.
+ *
+ * 변환 순서:
+ * 1. stations.ts의 NODE_ID_MAP 하드코딩 매핑 (네트워크 호출 없음)
+ * 2. getSttnNoList(nodeNo=arsId) 단건 조회
+ * 3. getStopLocationList 전체 목록에서 nodeno/arsId 매칭
+ * 4. 접두사 후보(GYB/JNB/GYN/GYS/'') + arsId 조합으로 도착정보 API 유효성 검증
  */
-const NODE_PREFIX_CANDIDATES = ['GYB', 'GYN', ''];
+const NODE_PREFIX_CANDIDATES = ['GYB', 'JNB', 'GYN', 'GYS', ''];
 const nodeIdCache = new Map<string, string>();
 
+function logApiError(context: string, data: unknown): void {
+  console.error(`[TAGO 디버그] ${context} 응답 전문:`, JSON.stringify(data, null, 2));
+}
+
 export async function resolveNodeId(arsId: string): Promise<string> {
+  // 1) 하드코딩 매핑 테이블 우선
+  if (NODE_ID_MAP[arsId]) {
+    nodeIdCache.set(arsId, NODE_ID_MAP[arsId]);
+    return NODE_ID_MAP[arsId];
+  }
   if (nodeIdCache.has(arsId)) return nodeIdCache.get(arsId)!;
 
-  // 먼저 정류소 목록에서 arsId로 nodeid 직접 검색
+  // 2) 정류소 번호(nodeNo)로 단건 검색
   try {
     const data = await fetchJson(
       '/1613000/BusSttnInfoInqireService/getSttnNoList',
       { cityCode: CITY_CODE_GWANGYANG, nodeNo: arsId },
     );
-    const items = parseItems<{ nodeid: string }>(data);
-    if (items.length > 0 && items[0].nodeid) {
-      nodeIdCache.set(arsId, items[0].nodeid);
-      return items[0].nodeid;
+    const items = parseItems<Record<string, unknown>>(data);
+    const found = items.find((it) => it.nodeid);
+    const nid = found ? String(found.nodeid) : undefined;
+    if (nid) {
+      console.info(`[TAGO] nodeNo=${arsId} → nodeId=${nid}`);
+      nodeIdCache.set(arsId, nid);
+      return nid;
     }
-  } catch {
-    // 폴백으로 진행
+    logApiError(`getSttnNoList(nodeNo=${arsId}) 결과 없음`, data);
+  } catch (e) {
+    console.error(`[TAGO 디버그] getSttnNoList(nodeNo=${arsId}) 호출 실패:`, e);
   }
 
-  // 접두사 후보 조합으로 nodeId 추정
+  // 3) 전체 정류소 목록에서 nodeno 매칭
+  try {
+    const data = await fetchJson(
+      '/1613000/BusSttnInfoInqireService/getStopLocationList',
+      { cityCode: CITY_CODE_GWANGYANG, numOfRows: '999' },
+    );
+    const items = parseItems<Record<string, unknown>>(data);
+    const match = items.find(
+      (it) =>
+        String(it.nodeno ?? '') === arsId ||
+        String(it.nodeid ?? '').endsWith(arsId),
+    );
+    if (match?.nodeid) {
+      console.info(`[TAGO] StopLocationList 매칭: ${arsId} → ${match.nodeid}`);
+      nodeIdCache.set(arsId, String(match.nodeid));
+      return String(match.nodeid);
+    }
+    logApiError(`getStopLocationList에서 ${arsId} 미매칭`, data);
+  } catch (e) {
+    console.error(`[TAGO 디버그] getStopLocationList 호출 실패:`, e);
+  }
+
+  // 4) 접두사 후보 조합 유효성 검증
   for (const prefix of NODE_PREFIX_CANDIDATES) {
     const candidate = `${prefix}${arsId}`;
     try {
@@ -82,14 +122,18 @@ export async function resolveNodeId(arsId: string): Promise<string> {
         nodeId: candidate,
         numOfRows: '1',
       });
+      console.info(`[TAGO] 접두사 시도 성공: ${candidate}`);
       nodeIdCache.set(arsId, candidate);
       return candidate;
-    } catch {
-      continue;
+    } catch (e) {
+      console.warn(`[TAGO 디버그] nodeId 후보 "${candidate}" 실패:`, e);
     }
   }
 
-  throw new Error(`정류소 nodeId 변환 실패: ${arsId}`);
+  throw new Error(
+    `정류소 nodeId 변환 실패: ${arsId}. ` +
+      'src/config/stations.ts의 NODE_ID_MAP에 직접 등록해 주세요 (콘솔의 TAGO 디버그 로그 참고).',
+  );
 }
 
 // ---------- 정류소 명칭 조회 ----------
