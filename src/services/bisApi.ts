@@ -26,7 +26,22 @@ function buildUrl(path: string, params: Record<string, string>): string {
 
 async function fetchJson<T>(path: string, params: Record<string, string>): Promise<T> {
   const res = await fetch(buildUrl(path, params));
-  if (!res.ok) throw new Error(`TAGO API 오류: ${res.status}`);
+  if (!res.ok) {
+    // HTTP 에러 시에도 응답 본문(공공데이터포털 에러 코드)을 로그로 출력
+    let bodyText = '';
+    try {
+      bodyText = await res.text();
+    } catch {
+      /* 무시 */
+    }
+    console.error(
+      `[TAGO 디버그] HTTP ${res.status} ${path}\n요청 파라미터:`,
+      params,
+      '\n응답 본문:',
+      bodyText.slice(0, 1000),
+    );
+    throw new Error(`TAGO API 오류: ${res.status} - ${bodyText.slice(0, 200)}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -74,10 +89,10 @@ export async function resolveNodeId(arsId: string): Promise<string> {
 
   // 2) 정류소 번호(nodeNo)로 단건 검색
   try {
-    const data = await fetchJson(
-      '/1613000/BusSttnInfoInqireService/getSttnNoList',
-      { cityCode: CITY_CODE_GWANGYANG, nodeNo: arsId },
-    );
+    const data = await fetchJson('/1613000/SttnInfoInqireService/getSttnNoList', {
+      cityCode: CITY_CODE_GWANGYANG,
+      nodeNo: arsId,
+    });
     const items = parseItems<Record<string, unknown>>(data);
     const found = items.find((it) => it.nodeid);
     const nid = found ? String(found.nodeid) : undefined;
@@ -93,10 +108,11 @@ export async function resolveNodeId(arsId: string): Promise<string> {
 
   // 3) 전체 정류소 목록에서 nodeno 매칭
   try {
-    const data = await fetchJson(
-      '/1613000/BusSttnInfoInqireService/getStopLocationList',
-      { cityCode: CITY_CODE_GWANGYANG, numOfRows: '999' },
-    );
+    const data = await fetchJson('/1613000/SttnInfoInqireService/getStopLocationList', {
+      cityCode: CITY_CODE_GWANGYANG,
+      numOfRows: '999',
+      pageNo: '1',
+    });
     const items = parseItems<Record<string, unknown>>(data);
     const match = items.find(
       (it) =>
@@ -117,11 +133,15 @@ export async function resolveNodeId(arsId: string): Promise<string> {
   for (const prefix of NODE_PREFIX_CANDIDATES) {
     const candidate = `${prefix}${arsId}`;
     try {
-      await fetchJson('/1613000/BusArrivalInfoService/getSttnAcctoArvlPrearngeInfoList', {
-        cityCode: CITY_CODE_GWANGYANG,
-        nodeId: candidate,
-        numOfRows: '1',
-      });
+      await fetchJson(
+        '/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList',
+        {
+          cityCode: CITY_CODE_GWANGYANG,
+          nodeId: candidate,
+          numOfRows: '1',
+          pageNo: '1',
+        },
+      );
       console.info(`[TAGO] 접두사 시도 성공: ${candidate}`);
       nodeIdCache.set(arsId, candidate);
       return candidate;
@@ -149,10 +169,11 @@ const stationNameCache = new Map<string, string>();
 export async function fetchStationName(stationId: string): Promise<string> {
   if (stationNameCache.has(stationId)) return stationNameCache.get(stationId)!;
 
-  const data = await fetchJson(
-    '/1613000/BusSttnInfoInqireService/getStopLocationList',
-    { cityCode: CITY_CODE_GWANGYANG, numOfRows: '999' },
-  );
+  const data = await fetchJson('/1613000/SttnInfoInqireService/getStopLocationList', {
+    cityCode: CITY_CODE_GWANGYANG,
+    numOfRows: '999',
+    pageNo: '1',
+  });
   const items = parseItems<StopLocationItem>(data);
   for (const it of items) {
     stationNameCache.set(it.nodeid, it.nodenm);
@@ -175,8 +196,8 @@ interface ArrivalItem {
 export async function fetchArrivals(stationId: string): Promise<ArrivalInfo[]> {
   const nodeId = await resolveNodeId(stationId);
   const data = await fetchJson(
-    '/1613000/BusArrivalInfoService/getSttnAcctoArvlPrearngeInfoList',
-    { cityCode: CITY_CODE_GWANGYANG, nodeId },
+    '/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList',
+    { cityCode: CITY_CODE_GWANGYANG, nodeId, numOfRows: '30', pageNo: '1' },
   );
   return parseItems<ArrivalItem>(data).map((it) => ({
     routeId: it.routeid,
@@ -199,8 +220,8 @@ interface RouteStationItem {
 /** 노선의 전체 경유 정류장 목록 (순번 포함) */
 export async function fetchRouteStations(routeId: string): Promise<RouteStation[]> {
   const data = await fetchJson(
-    '/1613000/BusRouteInfoInqireService/getRouteAcctoThrghSttnList',
-    { cityCode: CITY_CODE_GWANGYANG, routeId, numOfRows: '200' },
+    '/1613000/RouteInfoInqireService/getRouteAcctoThrghSttnList',
+    { cityCode: CITY_CODE_GWANGYANG, routeId, numOfRows: '200', pageNo: '1' },
   );
   return parseItems<RouteStationItem>(data).map((it) => ({
     routeId,
