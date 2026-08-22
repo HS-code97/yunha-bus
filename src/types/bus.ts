@@ -33,9 +33,10 @@ export interface ArrivalInfo {
   crowdedness?: 'SEAT' | 'STAND' | 'CROWDED';
 }
 
-// 필터링된 최적 버스 카드 데이터
+// 최적 버스 카드 데이터 (전체 표출 + 추천 플래그)
 export interface OptimalBus {
   arrival: ArrivalInfo;
-  stopsToDestination: number; // 출발지 → 도착지 경유 정류장 수
+  stopsToDestination: number | null; // 출발지 → 도착지 경유 정류장 수 (미확정 시 null)
   nextArrival?: ArrivalInfo; // 다음 도착 예정 버스
+  recommended: boolean; // 집으로 가는 유효 노선 여부 ('추천' 뱃지)
 }
