@@ -15,16 +15,17 @@ const API_BASE = 'https://apis.data.go.kr';
 const USE_PROXY = import.meta.env.DEV;
 
 function buildUrl(params: Record<string, string>): string {
-  // URLSearchParams가 serviceKey를 정확히 1회 인코딩 (이중 인코딩 없음)
-  const qs = new URLSearchParams({
-    serviceKey: API_KEY,
-    _type: 'json',
-    ...params,
-  });
+  // ⚠️ serviceKey는 .env의 "원본" 문자열을 그대로 사용해야 함.
+  // URLSearchParams/encodeURIComponent를 거치면 +/= 가 이중 인코딩되어
+  // SERVICE_KEY_IS_NOT_REGISTERED_ERROR(403) 발생이 확인됨.
+  // 나머지 파라미터만 개별 인코딩하여 수동으로 쿼리스트링을 조합한다.
+  const qs = Object.entries({ _type: 'json', ...params })
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
   const path =
     '/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList';
-  const full = `${API_BASE}${path}?${qs.toString()}`;
-  return USE_PROXY ? `/api/bis${path}?${qs.toString()}` : full;
+  const full = `${API_BASE}${path}?serviceKey=${API_KEY}&${qs}`;
+  return USE_PROXY ? `/api/bis${path}?serviceKey=${API_KEY}&${qs}` : full;
 }
 
 async function fetchJson<T>(params: Record<string, string>): Promise<T> {
