@@ -22,9 +22,10 @@ export default function App() {
     retry: false,
   });
 
+  // 이름 우선순위: stations.ts 설정 한글명(방향구분 포함) → API 학습 캐시(nodenm) → stationId
   const namedOrigins = ORIGINS.map((o) => ({
     ...o,
-    name: originNames?.[o.stationId] ?? o.stationId,
+    name: o.name || originNames?.[o.stationId] || o.stationId,
   }));
   const selectedOrigin = namedOrigins.find((o) => o.stationId === selectedOriginId)!;
 

@@ -4,12 +4,12 @@ import { NODE_ID_MAP } from '../config/stations';
 /**
  * 국토교통부(TAGO) 버스도착정보조회 서비스 (ArvlInfoInqireService)
  * - 단일 승인 서비스만 사용: getSttnAcctoArvlPrearngeInfoList
- * - 전라남도 광양시 cityCode: 38070
+ * - 전라남도 광양시 cityCode: 36060
  * - 로컬 개발: Vite proxy(/api/bis) 경유 / 배포: 직접 호출
  */
 
 const API_KEY = import.meta.env.VITE_BIS_API_KEY ?? '';
-export const CITY_CODE_GWANGYANG = '38070';
+export const CITY_CODE_GWANGYANG = '36060';
 
 const API_BASE = 'https://apis.data.go.kr';
 const USE_PROXY = import.meta.env.DEV;
@@ -29,7 +29,15 @@ function buildUrl(params: Record<string, string>): string {
 }
 
 async function fetchJson<T>(params: Record<string, string>): Promise<T> {
-  const res = await fetch(buildUrl(params));
+  const url = buildUrl(params);
+  console.info('[TAGO 요청]', url.replace(/serviceKey=[^&]+/, 'serviceKey=***'));
+  let res: Response;
+  try {
+    res = await fetch(url);
+  } catch (e) {
+    console.error('[TAGO 디버그] fetch 실패 (네트워크/CORS/프록시):', e, '\n요청 URL:', url);
+    throw e;
+  }
   if (!res.ok) {
     let bodyText = '';
     try {
@@ -76,11 +84,14 @@ function parseItems<T>(data: unknown): T[] {
 }
 
 // ---------- nodeId 결정 및 학습 캐시 ----------
-const NODE_PREFIX_CANDIDATES = ['GYB', ''];
+const NODE_PREFIX_CANDIDATES = ['KYB', ''];
 const nodeIdCache = new Map<string, string>();
 
 /** 도착정보 응답에서 학습한 정류소명 캐시 (별도 정류소 API 호출 불필요) */
 export const stationNameCache = new Map<string, string>();
+
+/** 마지막 TAGO 응답 원문 (디버그 UI 표출용) */
+export let lastRawJson = '';
 
 function learnFromItems(items: ArrivalItem[]): void {
   for (const it of items) {
@@ -99,7 +110,7 @@ async function resolveNodeId(arsId: string): Promise<string> {
       const data = await fetchJson<unknown>({
         cityCode: CITY_CODE_GWANGYANG,
         nodeId: candidate,
-        numOfRows: '30',
+        numOfRows: '100',
         pageNo: '1',
       });
       const items = parseItems<ArrivalItem>(data);
@@ -122,13 +133,35 @@ async function resolveNodeId(arsId: string): Promise<string> {
 /** 정류장 실시간 도착 정보 (nodenm/routeno/arrtime/arrprevstationcnt 직접 파싱) */
 export async function fetchArrivals(stationId: string): Promise<ArrivalInfo[]> {
   const nodeId = await resolveNodeId(stationId);
-  const data = await fetchJson<unknown>({
-    cityCode: CITY_CODE_GWANGYANG,
-    nodeId,
-    numOfRows: '30',
-    pageNo: '1',
-  });
-  const items = parseItems<ArrivalItem>(data);
+  // test-bus.html 검증 성공 조건과 동일: numOfRows=30, pageNo=1
+  const callApi = async (nid: string) => {
+    const data = await fetchJson<unknown>({
+      cityCode: CITY_CODE_GWANGYANG,
+      nodeId: nid,
+      numOfRows: '30',
+      pageNo: '1',
+    });
+    lastRawJson = JSON.stringify(data, null, 2);
+    console.log('[본앱 TAGO 응답 원본]', data);
+    return parseItems<ArrivalItem>(data);
+  };
+
+  let items = await callApi(nodeId);
+
+  // Fallback: nodeId 접두어 제거(숫자만)로 1회 재호출
+  if (items.length === 0 && /^[A-Z]{3}/.test(nodeId)) {
+    const numericId = nodeId.replace(/^[A-Z]{3}/, '');
+    console.warn(`[본앱 TAGO] items 비어있음 → Fallback 재호출: nodeId=${numericId}`);
+    try {
+      items = await callApi(numericId);
+    } catch (e) {
+      console.warn('[본앱 TAGO] Fallback 호출 실패:', e);
+    }
+  }
+
+  if (items.length === 0) {
+    console.warn('[본앱 TAGO] 최종 items 비어있음:', { nodeId, cityCode: CITY_CODE_GWANGYANG });
+  }
   learnFromItems(items);
   return items.map((it) => ({
     routeId: it.routeid,

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Bus, RefreshCw } from 'lucide-react';
 import type { Station } from '../types/bus';
 import { getOptimalBuses } from '../services';
+import { lastRawJson } from '../services/bisApi';
 import BusCard from './BusCard';
 
 interface Props {
@@ -58,6 +59,16 @@ export default function Dashboard({ origin }: Props) {
           <Bus size={32} />
           현재 운행 중인 유효 버스가 없습니다. (운행 종료 또는 방향 미일치)
         </div>
+      )}
+
+      <div className="mb-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+        [디버그] 조회된 버스 수: {(data?.length ?? 0)}개 / 로딩상태: {String(isLoading)} / 에러: {String(isError)} / 갱신시각: {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString('ko-KR') : '-'}
+      </div>
+
+      {lastRawJson && (
+        <pre style={{ fontSize: 11, maxHeight: 150, overflow: 'auto' }} className="mb-2 rounded-lg bg-slate-900 p-2 text-cyan-200">
+          {lastRawJson}
+        </pre>
       )}
 
       <div className="space-y-3">
