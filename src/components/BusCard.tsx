@@ -1,11 +1,6 @@
-import { Bus, Clock, Flag, Home, Users } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import type { OptimalBus } from '../types/bus';
-
-const CROWDED_LABEL: Record<string, { text: string; cls: string }> = {
-  SEAT: { text: '여유', cls: 'bg-green-100 text-green-700' },
-  STAND: { text: '보통', cls: 'bg-amber-100 text-amber-700' },
-  CROWDED: { text: '혼잡', cls: 'bg-red-100 text-red-700' },
-};
+import { PASTEL_THEMES, type PastelKey } from '../config/stations';
 
 function formatEta(minutes: number, seconds: number): string {
   const total = minutes * 60 + seconds;
@@ -15,89 +10,87 @@ function formatEta(minutes: number, seconds: number): string {
   return m > 0 ? `${m}분 ${s}초` : `${s}초`;
 }
 
-export default function BusCard({ bus }: { bus: OptimalBus }) {
-  const { arrival, stopsToDestination, nextArrival, recommended } = bus;
-  const crowded = arrival.crowdedness ? CROWDED_LABEL[arrival.crowdedness] : null;
+interface Props {
+  bus: OptimalBus;
+}
+
+/** 탑승 대상 버스 — 좌측 정류장 박스 + 중앙 노선 + 우측 ETA 3분할 카드 */
+function TargetCard({ bus }: Props) {
+  const { arrival, colorKey = 'orange' } = bus;
+  const t = PASTEL_THEMES[colorKey as PastelKey];
 
   return (
     <div
-      className={`rounded-2xl border bg-white p-5 shadow-sm ${
-        recommended ? 'border-blue-400 ring-1 ring-blue-200' : 'border-slate-200'
-      }`}
+      className={`flex items-center gap-3 rounded-2xl border-2 ${t.border} bg-white p-3 shadow-sm ${t.ring} ring-1`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <div
-            className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white ${
-              recommended ? 'bg-blue-600' : 'bg-slate-400'
-            }`}
-          >
-            <Bus size={28} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-2xl font-extrabold text-slate-900">
-                {arrival.routeNo}
-              </span>
-              {recommended ? (
-                <span className="shrink-0 rounded-full bg-blue-600 px-2.5 py-0.5 text-xs font-bold text-white">
-                  추천
-                </span>
-              ) : (
-                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-500">
-                  일반
-                </span>
-              )}
-            </div>
-            <div className="text-sm font-medium text-slate-500">
-              {arrival.direction === 'CIRCULAR'
-                ? '순환'
-                : arrival.direction === 'UP'
-                  ? '상행'
-                  : '하행'}{' '}
-              방면
-            </div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="flex items-center justify-end gap-1.5 text-3xl font-black tracking-tight text-blue-600">
-            <Clock size={22} />
-            {formatEta(arrival.remainingMinutes, arrival.remainingSeconds)}
-          </div>
-          <div className="mt-1 flex items-center justify-end gap-1.5 text-base font-bold text-slate-600">
-            <Flag size={15} />
-            {arrival.remainingStops}정거장 전
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {recommended && stopsToDestination != null && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-4 py-2 text-base font-bold text-indigo-700">
-            <Home size={16} />
-            집까지 {stopsToDestination}정거장
-          </span>
-        )}
-        {crowded && (
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-base font-bold ${crowded.cls}`}
-          >
-            <Users size={16} />
-            {crowded.text}
+      {/* 좌측: 정류장 식별 박스 */}
+      <div
+        className={`flex w-[80px] shrink-0 flex-col items-center justify-center rounded-xl border px-1 py-2 ${t.badgeBg} ${t.badgeText} ${t.badgeBorder}`}
+      >
+        <span className="text-base leading-none">{t.emoji}</span>
+        <span className="mt-1 text-center text-[13px] font-black leading-tight">
+          {t.badgeLabel}
+        </span>
+        {t.badgeTag && (
+          <span className="mt-1 rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] font-black">
+            [ {t.badgeTag} ]
           </span>
         )}
       </div>
 
-      {nextArrival && (
-        <div className="mt-4 flex min-h-[48px] items-center justify-between rounded-xl bg-slate-50 px-4 py-2.5 text-base">
-          <span className="font-semibold text-slate-500">다음 버스</span>
-          <span className="font-bold text-slate-700">
-            {nextArrival.routeNo} ·{' '}
-            {formatEta(nextArrival.remainingMinutes, nextArrival.remainingSeconds)} ·{' '}
-            {nextArrival.remainingStops}정거장 전
+      {/* 중앙: 노선 & 정류장 수 */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-2xl font-extrabold text-slate-900">
+            {arrival.routeNo}
+          </span>
+          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-extrabold text-emerald-700">
+            탑승
           </span>
         </div>
-      )}
+        <span className="mt-0.5 text-xs font-semibold text-slate-400">
+          {arrival.remainingStops}정거장 전
+        </span>
+      </div>
+
+      {/* 우측: 도착 시간 (한 줄 유지) */}
+      <div className="flex shrink-0 items-center gap-1 whitespace-nowrap text-lg font-black tracking-tight text-slate-800">
+        <Clock size={16} className="text-slate-400" />
+        {formatEta(arrival.remainingMinutes, arrival.remainingSeconds)}
+      </div>
     </div>
   );
+}
+
+/** 기타 일반 버스 — 슬림 행 (정류장 라벨 표기) */
+function SlimCard({ bus }: Props) {
+  const { arrival, stationName, colorKey = 'orange' } = bus;
+  const t = PASTEL_THEMES[colorKey as PastelKey];
+
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-100/60 bg-white/60 px-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 rounded-md bg-amber-100/70 px-1.5 py-0.5 text-xs font-bold text-amber-800">
+          {arrival.routeNo}
+        </span>
+        {stationName && (
+          <span
+            className={`truncate text-[11px] font-bold ${t.badgeText}`}
+          >
+            🚏 {stationName}
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap text-xs">
+        <span className="font-semibold text-slate-500">
+          {formatEta(arrival.remainingMinutes, arrival.remainingSeconds)}
+        </span>
+        <span className="text-slate-400">{arrival.remainingStops}정거장 전</span>
+      </div>
+    </div>
+  );
+}
+
+export default function BusCard({ bus }: Props) {
+  return bus.isTarget ? <TargetCard bus={bus} /> : <SlimCard bus={bus} />;
 }

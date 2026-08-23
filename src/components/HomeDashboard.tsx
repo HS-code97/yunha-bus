@@ -7,19 +7,32 @@ import { TARGET_ROUTES } from '../config/stations';
 import BusCard from './BusCard';
 
 interface Props {
-  origin: Station;
+  origins: Station[]; // 통합 비교 대상 정류소 (사랑병원 + 사랑병원 건너)
   onDataUpdate?: (ts: number) => void;
 }
 
-/** 개별 정류소 단독 도착 정보 뷰 (서브 탭 선택 시) */
-export default function Dashboard({ origin, onDataUpdate }: Props) {
+/** '집에 가기' — 두 정류소를 동시 조회해 ETA 빠른 순으로 통합 표출 */
+export default function HomeDashboard({ origins, onDataUpdate }: Props) {
   const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
-    queryKey: ['optimalBuses', origin.stationId],
-    queryFn: () =>
-      getOptimalBuses(origin.stationId, 100, {
-        stationName: origin.name,
-        targetRoutes: TARGET_ROUTES[origin.stationId] ?? [],
-      }),
+    queryKey: ['homeBuses', origins.map((o) => o.stationId)],
+    queryFn: async () => {
+      const lists = await Promise.all(
+        origins.map((o) =>
+          getOptimalBuses(o.stationId, 100, {
+            stationName: o.name,
+            targetRoutes: TARGET_ROUTES[o.stationId] ?? [],
+          }),
+        ),
+      );
+      // ETA 빠른 순 통합 정렬
+      return lists
+        .flat()
+        .sort(
+          (a, b) =>
+            a.arrival.remainingMinutes * 60 + a.arrival.remainingSeconds -
+            (b.arrival.remainingMinutes * 60 + b.arrival.remainingSeconds),
+        );
+    },
     refetchInterval: 30_000,
   });
 
@@ -31,7 +44,7 @@ export default function Dashboard({ origin, onDataUpdate }: Props) {
     <div>
       {isLoading && (
         <div className="space-y-2.5">
-          {[0, 1].map((i) => (
+          {[0, 1, 2].map((i) => (
             <div key={i} className="h-16 animate-pulse rounded-2xl bg-white" />
           ))}
         </div>
