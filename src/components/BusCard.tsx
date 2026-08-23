@@ -1,21 +1,41 @@
+import { useState, useEffect } from 'react';
 import { Clock } from 'lucide-react';
 import type { OptimalBus } from '../types/bus';
 import { PASTEL_THEMES, type PastelKey } from '../config/stations';
 
-function formatEta(minutes: number, seconds: number): string {
-  const total = minutes * 60 + seconds;
-  if (total <= 0) return '곧 도착';
-  const m = Math.floor(total / 60);
-  const s = total % 60;
+function formatEta(totalSeconds: number): string {
+  if (totalSeconds <= 0) return '곧 도착';
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
   return m > 0 ? `${m}분 ${s}초` : `${s}초`;
 }
 
-interface Props {
+/** 1초마다 1씩 실시간 감소하는 카운트다운 훅 (데이터 갱신 시 자동 리셋) */
+function useCountdown(initialSeconds: number) {
+  const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
+
+  useEffect(() => {
+    setSecondsLeft(initialSeconds);
+  }, [initialSeconds]);
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [secondsLeft]);
+
+  return secondsLeft;
+}
+
+interface CardProps {
   bus: OptimalBus;
+  secondsLeft: number;
 }
 
 /** 탑승 대상 버스 — 좌측 정류장 박스 + 중앙 노선 + 우측 ETA 3분할 카드 */
-function TargetCard({ bus }: Props) {
+function TargetCard({ bus, secondsLeft }: CardProps) {
   const { arrival, colorKey = 'orange' } = bus;
   const t = PASTEL_THEMES[colorKey as PastelKey];
 
@@ -53,17 +73,17 @@ function TargetCard({ bus }: Props) {
         </span>
       </div>
 
-      {/* 우측: 도착 시간 (한 줄 유지) */}
+      {/* 우측: 도착 시간 (1초마다 실시간 카운트다운) */}
       <div className="flex shrink-0 items-center gap-1 whitespace-nowrap text-lg font-black tracking-tight text-slate-800">
         <Clock size={16} className="text-slate-400" />
-        {formatEta(arrival.remainingMinutes, arrival.remainingSeconds)}
+        {formatEta(secondsLeft)}
       </div>
     </div>
   );
 }
 
 /** 기타 일반 버스 — 슬림 행 (정류장 라벨 표기) */
-function SlimCard({ bus }: Props) {
+function SlimCard({ bus, secondsLeft }: CardProps) {
   const { arrival, stationName, colorKey = 'orange' } = bus;
   const t = PASTEL_THEMES[colorKey as PastelKey];
 
@@ -83,7 +103,7 @@ function SlimCard({ bus }: Props) {
       </div>
       <div className="flex shrink-0 items-center gap-2.5 whitespace-nowrap text-xs">
         <span className="font-semibold text-slate-500">
-          {formatEta(arrival.remainingMinutes, arrival.remainingSeconds)}
+          {formatEta(secondsLeft)}
         </span>
         <span className="text-slate-400">{arrival.remainingStops}정거장 전</span>
       </div>
@@ -91,6 +111,14 @@ function SlimCard({ bus }: Props) {
   );
 }
 
-export default function BusCard({ bus }: Props) {
-  return bus.isTarget ? <TargetCard bus={bus} /> : <SlimCard bus={bus} />;
+export default function BusCard({ bus }: { bus: OptimalBus }) {
+  const initialSeconds =
+    bus.arrival.remainingMinutes * 60 + bus.arrival.remainingSeconds;
+  const secondsLeft = useCountdown(initialSeconds);
+
+  return bus.isTarget ? (
+    <TargetCard bus={bus} secondsLeft={secondsLeft} />
+  ) : (
+    <SlimCard bus={bus} secondsLeft={secondsLeft} />
+  );
 }

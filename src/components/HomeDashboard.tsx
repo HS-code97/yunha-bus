@@ -11,7 +11,7 @@ interface Props {
   onDataUpdate?: (ts: number) => void;
 }
 
-/** '집에 가기' — 두 정류소를 동시 조회해 ETA 빠른 순으로 통합 표출 */
+/** '집에 가기' — 두 정류소를 동시 조회해 전체 버스를 ETA 빠른 순 단일 스트림으로 통합 표출 */
 export default function HomeDashboard({ origins, onDataUpdate }: Props) {
   const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
     queryKey: ['homeBuses', origins.map((o) => o.stationId)],
@@ -24,7 +24,7 @@ export default function HomeDashboard({ origins, onDataUpdate }: Props) {
           }),
         ),
       );
-      // ETA 빠른 순 통합 정렬
+      // 오직 도착 잔여 시간(ETA 빠른 순) 하나로만 단일 정렬
       return lists
         .flat()
         .sort(
@@ -64,6 +64,7 @@ export default function HomeDashboard({ origins, onDataUpdate }: Props) {
         </div>
       )}
 
+      {/* ETA 빠른 순 단일 스트림 렌더링 (isTarget 여부에 따라 강조/슬림 자동 분기) */}
       <div className="space-y-2.5">
         {data?.map((bus, i) => (
           <BusCard key={`${bus.arrival.routeId}-${i}`} bus={bus} />

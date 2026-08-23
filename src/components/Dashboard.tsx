@@ -11,7 +11,7 @@ interface Props {
   onDataUpdate?: (ts: number) => void;
 }
 
-/** 개별 정류소 단독 도착 정보 뷰 (서브 탭 선택 시) */
+/** 개별 정류소 단독 도착 정보 뷰 (ETA 빠른 순 단일 스트림 정렬) */
 export default function Dashboard({ origin, onDataUpdate }: Props) {
   const { data, isLoading, isError, error, dataUpdatedAt } = useQuery({
     queryKey: ['optimalBuses', origin.stationId],
@@ -51,6 +51,7 @@ export default function Dashboard({ origin, onDataUpdate }: Props) {
         </div>
       )}
 
+      {/* ETA 빠른 순 단일 스트림 렌더링 (isTarget 여부에 따라 강조/슬림 자동 분기) */}
       <div className="space-y-2.5">
         {data?.map((bus, i) => (
           <BusCard key={`${bus.arrival.routeId}-${i}`} bus={bus} />

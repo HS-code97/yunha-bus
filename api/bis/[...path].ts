@@ -1,17 +1,34 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-
 /**
  * TAGO 공공데이터포털 API 프록시 (Vercel Serverless Function)
  *
  * /api/bis/* 요청을 https://apis.data.go.kr/* 로 중계한다.
- * - 쿼리스트링은 파싱/재인코딩하지 않고 원본(raw) 그대로 전달하여
- *   serviceKey의 +, /, = 특수문자가 이중 인코딩으로 깨지는 문제를 방지
- *   (403 SERVICE_KEY_IS_NOT_REGISTERED_ERROR 해결)
+ * - @vercel/node 외부 의존성 없이 표준 Node/Vercel 호환 인터페이스 정의
+ * - 쿼리스트링은 원본 그대로 전달하여 특수문자 이중 인코딩 방지
+ * - no-store 캐시 제어 헤더를 적용하여 실시간 데이터 보장
  */
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+
+interface ServerlessRequest {
+  query: Record<string, string | string[] | undefined>;
+  url?: string;
+  method?: string;
+}
+
+interface ServerlessResponse {
+  setHeader(name: string, value: string): this;
+  status(code: number): this;
+  send(body: any): void;
+  json(body: any): void;
+  end(): void;
+}
+
+export default async function handler(req: ServerlessRequest, res: ServerlessResponse) {
   // CORS (동일 오리진 호출이므로 최소한만 허용)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
@@ -30,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const upstream = await fetch(`${target}?${rawQuery}`, {
       method: 'GET',
       headers: { Accept: 'application/json, text/xml' },
+      cache: 'no-store',
     });
 
     const contentType = upstream.headers.get('content-type') ?? 'application/json';

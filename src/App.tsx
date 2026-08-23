@@ -29,7 +29,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto max-w-md px-4 py-5">
-        {/* 헤더 — 좌: 타이틀 / 우: 갱신시간 + 새로고침 알약 */}
+        {/* 헤더 — 좌: 타이틀 / 우: 갱신시간 + 캡슐형 새로고침 버튼 */}
         <header className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-100 text-xl shadow-sm shadow-amber-200/60">
@@ -38,7 +38,7 @@ export default function App() {
             <h1 className="text-xl font-extrabold text-slate-800">윤하 버스</h1>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-full border border-amber-200/70 bg-white px-2 py-1 shadow-sm">
+          <div className="flex items-center gap-2">
             <span className="whitespace-nowrap text-[11px] font-semibold text-slate-400">
               {updatedAt ? new Date(updatedAt).toLocaleTimeString('ko-KR') : '-'}
             </span>
@@ -46,9 +46,13 @@ export default function App() {
               onClick={handleRefresh}
               disabled={isFetching}
               aria-label="새로고침"
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-400 text-amber-950 transition-all hover:opacity-90 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm transition-all hover:bg-amber-200 active:scale-95 disabled:opacity-60"
             >
-              <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+              <RefreshCw
+                size={14}
+                className={`text-amber-800 ${isFetching ? 'animate-spin' : ''}`}
+              />
+              <span>새로고침</span>
             </button>
           </div>
         </header>

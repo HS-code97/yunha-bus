@@ -5,27 +5,23 @@ import { NODE_ID_MAP } from '../config/stations';
  * 국토교통부(TAGO) 버스도착정보조회 서비스 (ArvlInfoInqireService)
  * - 단일 승인 서비스만 사용: getSttnAcctoArvlPrearngeInfoList
  * - 전라남도 광양시 cityCode: 36060
- * - 로컬 개발: Vite proxy(/api/bis) 경유 / 배포: 직접 호출
+ * - 로컬 개발: Vite proxy(/api/bis) 경유 / Vercel 배포: Serverless Function(/api/bis) 경유
  */
 
 const API_KEY = import.meta.env.VITE_BIS_API_KEY ?? '';
 export const CITY_CODE_GWANGYANG = '36060';
-
-const API_BASE = 'https://apis.data.go.kr';
-const USE_PROXY = import.meta.env.DEV;
 
 function buildUrl(params: Record<string, string>): string {
   // ⚠️ serviceKey는 .env의 "원본" 문자열을 그대로 사용해야 함.
   // URLSearchParams/encodeURIComponent를 거치면 +/= 가 이중 인코딩되어
   // SERVICE_KEY_IS_NOT_REGISTERED_ERROR(403) 발생이 확인됨.
   // 나머지 파라미터만 개별 인코딩하여 수동으로 쿼리스트링을 조합한다.
-  const qs = Object.entries({ _type: 'json', ...params })
+  const qs = Object.entries({ _type: 'json', _t: String(Date.now()), ...params })
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
     .join('&');
   const path =
     '/1613000/ArvlInfoInqireService/getSttnAcctoArvlPrearngeInfoList';
-  const full = `${API_BASE}${path}?serviceKey=${API_KEY}&${qs}`;
-  return USE_PROXY ? `/api/bis${path}?serviceKey=${API_KEY}&${qs}` : full;
+  return `/api/bis${path}?serviceKey=${API_KEY}&${qs}`;
 }
 
 async function fetchJson<T>(params: Record<string, string>): Promise<T> {
@@ -33,7 +29,13 @@ async function fetchJson<T>(params: Record<string, string>): Promise<T> {
   console.info('[TAGO 요청]', url.replace(/serviceKey=[^&]+/, 'serviceKey=***'));
   let res: Response;
   try {
-    res = await fetch(url);
+    res = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+    });
   } catch (e) {
     console.error('[TAGO 디버그] fetch 실패 (네트워크/CORS/프록시):', e, '\n요청 URL:', url);
     throw e;
