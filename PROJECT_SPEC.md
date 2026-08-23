@@ -33,15 +33,16 @@
   * `useCountdown` 커스텀 훅(`setInterval` + `Date.now()` 보정)을 통해 30초 API 폴링 사이에도 남은 초가 매초 1씩 줄어들며, 0초 도달 시 "곧 도착"으로 매끄럽게 전환.
 
 ### 4. API 통신 장애 분석 및 해결 아키텍처 (핵심 트러블슈팅)
-1. Vercel Serverless Function Proxy (`api/bis/[...path].ts`):
-   * `@vercel/node` 의존성을 제거하고 독립 인터페이스(`ServerlessRequest` / `ServerlessResponse`)로 빌드 에러 원천 차단.
+1. Vercel Serverless Function Proxy (`api/bis.ts`):
+   * 404 NOT_FOUND 방지를 위해 단일 핸들러 `api/bis.ts`로 전환.
+   * `@vercel/node` 외부 의존성 없이 표준 독립 인터페이스(`ServerlessRequest` / `ServerlessResponse`)로 빌드 에러 원천 차단.
    * 프론트엔드가 `/api/bis/...`로 요청하면 `https://apis.data.go.kr`로 fetch 중계.
-   * 핵심 로직: URL 쿼리스트링을 Node.js에서 재인코딩하지 않고 클라이언트가 보낸 원본 원시 쿼리스트링(`req.url`의 raw query)을 그대로 붙여 중계하여 특수문자 변형 방지.
+   * 핵심 로직: `req.url`에서 `/api/bis/` 접두사를 제거한 원시 쿼리스트링을 그대로 붙여 중계하여 특수문자 변형 방지.
 2. 캐시 완벽 차단:
    * `src/services/bisApi.ts`: 요청 URL에 타임스탬프(`&_t=${Date.now()}`) 첨부 및 `cache: 'no-store'` 적용.
-   * `api/bis/[...path].ts`: 응답 헤더에 `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate` 적용.
+   * `api/bis.ts`: 응답 헤더에 `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate` 적용.
 3. `vercel.json` 설정:
-   * API rewrite를 제거하고 SPA 라우팅 폴백만 유지 (`/((?!api/.*).*)` ➔ `/index.html`).
+   * `/api/bis/:path*` ➔ `/api/bis` rewrite 명시적 매핑 및 SPA 라우팅 폴백 (`/((?!api/.*).*)` ➔ `/index.html`).
 4. Vercel 환경 변수:
    * `VITE_BIS_API_KEY`: 공공데이터포털 인증키(Encoding) 문자열
    * `VITE_USE_MOCK`: `false`
